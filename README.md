@@ -1,5 +1,7 @@
 # GPS_TO_KML
 
+![KML Visualization](media/img/kml2.png)
+
 **gps_to_kml** es un paquete de ROS2 en Python que provee herramientas para procesar archivos rosbag2 que contienen mensajes de tipo NavSatFix. Este paquete ofrece utilidades para:
 
 - Leer e imprimir datos GPS desde un rosbag.

@@ -34,15 +34,14 @@ def setup_logger() -> logging.Logger:
 
 def create_kml(bag_folder: str, target_topic: str, output_kml: str, logger: logging.Logger) -> None:
     """
-    Reads NavSatFix messages from a rosbag and writes the data to a KML file.
+    Lee mensajes NavSatFix de un rosbag y escribe la ruta (línea) en un archivo KML.
     
-    :param bag_folder: Absolute path to the rosbag2 directory.
-    :param target_topic: The topic to filter messages.
-    :param output_kml: File path for the output KML file.
-    :param logger: Logger instance for logging.
+    :param bag_folder: Ruta absoluta a la carpeta del rosbag2.
+    :param target_topic: El tópico a filtrar los mensajes.
+    :param output_kml: Ruta del archivo KML de salida.
+    :param logger: Instancia del logger para el registro.
     """
     try:
-        # Configure storage and conversion options
         storage_options = rosbag2_py.StorageOptions(uri=bag_folder, storage_id="sqlite3")
         converter_options = rosbag2_py.ConverterOptions(
             input_serialization_format="cdr",
@@ -51,42 +50,55 @@ def create_kml(bag_folder: str, target_topic: str, output_kml: str, logger: logg
         reader = rosbag2_py.SequentialReader()
         reader.open(storage_options, converter_options)
     except Exception as e:
-        logger.error("Failed to open rosbag: %s", e)
+        logger.error("Error al abrir el rosbag: %s", e)
         return
 
-    logger.info("Processing messages from topic: %s", target_topic)
+    logger.info("Procesando mensajes del tópico: %s", target_topic)
     
-    # Initialize KML object
-    kml = simplekml.Kml()
+    # Lista para acumular las coordenadas
+    route_coords = []
     
     try:
         while reader.has_next():
             topic, data, timestamp = reader.read_next()
             if topic == target_topic:
                 try:
-                    # Deserialize the NavSatFix message
                     msg = rclpy.serialization.deserialize_message(data, NavSatFix)
-                    
-                    # Create a new placemark in KML (coordinates are in lon, lat, alt)
-                    placemark = kml.newpoint(
-                        name=str(timestamp),
-                        coords=[(msg.longitude, msg.latitude, msg.altitude)]
-                    )
+                    # Agrega las coordenadas (lon, lat, alt) a la lista
+                    route_coords.append((msg.longitude, msg.latitude, msg.altitude))
                     
                     logger.debug(
-                        "Processed message: lat=%.6f, lon=%.6f, alt=%.2f",
+                        "Mensaje procesado: lat=%.6f, lon=%.6f, alt=%.2f",
                         msg.latitude, msg.longitude, msg.altitude
                     )
                 except Exception as e:
-                    logger.error("Error processing message on topic '%s': %s", topic, e)
+                    logger.error("Error al procesar el mensaje en el tópico '%s': %s", topic, e)
     except Exception as e:
-        logger.error("Error reading messages from bag: %s", e)
+        logger.error("Error al leer mensajes del bag: %s", e)
     
+    # Verifica que se hayan obtenido coordenadas antes de crear la ruta
+    if route_coords:
+        # Crea un objeto Kml
+        kml = simplekml.Kml()
+        
+        # Crea el LineString usando newlinestring, siguiendo el ejemplo de la documentación
+        lin = kml.newlinestring(
+            name="Ruta",
+            description="Ruta generada a partir de mensajes NavSatFix",
+            coords=route_coords
+        )
+        
+        # Opcional: personaliza el estilo del LineString
+        lin.style.linestyle.color = simplekml.Color.red  # Color rojo
+        lin.style.linestyle.width = 3  # Ancho de línea
+    else:
+        logger.warning("No se encontraron coordenadas para el tópico: %s", target_topic)
+        
     try:
         kml.save(output_kml)
-        logger.info("KML file saved to: %s", output_kml)
+        logger.info("Archivo KML guardado en: %s", output_kml)
     except Exception as e:
-        logger.error("Error saving KML file: %s", e)
+        logger.error("Error al guardar el archivo KML: %s", e)
 
 def parse_arguments() -> argparse.Namespace:
     """
