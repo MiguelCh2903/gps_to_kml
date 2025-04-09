@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 import os
 import sys
+import argparse
 import logging
 
 import rosbag2_py
 import rclpy.serialization
-from sensor_msgs.msg import NavSatFix  # Updated message type for the navsat_fix topic
+from sensor_msgs.msg import NavSatFix  # Using NavSatFix for the /swift/navsat_fix topic
 
 def setup_logger() -> logging.Logger:
     """
@@ -15,16 +16,19 @@ def setup_logger() -> logging.Logger:
     logger.setLevel(logging.DEBUG)
     
     # Create a console handler with debug log level
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.DEBUG)
     
     # Create formatter and add it to the handler
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    ch.setFormatter(formatter)
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    console_handler.setFormatter(formatter)
     
-    # Avoid adding duplicate handlers in case of multiple calls
+    # Avoid duplicate handlers if the logger is already configured
     if not logger.handlers:
-        logger.addHandler(ch)
+        logger.addHandler(console_handler)
+    
     return logger
 
 def read_rosbag(bag_folder: str, target_topic: str, logger: logging.Logger) -> None:
@@ -35,7 +39,6 @@ def read_rosbag(bag_folder: str, target_topic: str, logger: logging.Logger) -> N
     :param target_topic: The topic to filter messages.
     :param logger: Logger instance for logging.
     """
-    # Configure storage and converter options
     try:
         storage_options = rosbag2_py.StorageOptions(uri=bag_folder, storage_id="sqlite3")
         converter_options = rosbag2_py.ConverterOptions(
@@ -46,7 +49,6 @@ def read_rosbag(bag_folder: str, target_topic: str, logger: logging.Logger) -> N
         logger.error("Failed to configure storage or converter options: %s", e)
         return
 
-    # Open the rosbag reader
     try:
         reader = rosbag2_py.SequentialReader()
         reader.open(storage_options, converter_options)
@@ -56,7 +58,6 @@ def read_rosbag(bag_folder: str, target_topic: str, logger: logging.Logger) -> N
 
     logger.info("Processing messages from topic: %s", target_topic)
 
-    # Process the messages from the rosbag
     try:
         while reader.has_next():
             topic, data, timestamp = reader.read_next()
@@ -64,33 +65,50 @@ def read_rosbag(bag_folder: str, target_topic: str, logger: logging.Logger) -> N
                 try:
                     # Deserialize the message using the NavSatFix type
                     msg = rclpy.serialization.deserialize_message(data, NavSatFix)
-                    logger.info("Received NavSatFix message: latitude=%.6f, longitude=%.6f, altitude=%.2f",
-                                msg.latitude, msg.longitude, msg.altitude)
+                    logger.info(
+                        "Received NavSatFix message: latitude=%.6f, longitude=%.6f, altitude=%.2f",
+                        msg.latitude, msg.longitude, msg.altitude
+                    )
                 except Exception as e:
-                    logger.error("Error deserializing message on topic '%s' with data length %d: %s",
-                                 topic, len(data), e)
+                    logger.error(
+                        "Error deserializing message on topic '%s' (data length: %d): %s",
+                        topic, len(data), e
+                    )
     except Exception as e:
         logger.error("Error reading messages from bag: %s", e)
 
+def parse_arguments() -> argparse.Namespace:
+    """
+    Parses command-line arguments, ignoring any additional ROS 2 launch arguments.
+    """
+    parser = argparse.ArgumentParser(
+        description="Read and process a rosbag2 file."
+    )
+    parser.add_argument(
+        '--bag_folder',
+        type=str,
+        required=True,
+        help="Absolute path to the rosbag2 directory."
+    )
+    parser.add_argument(
+        '--target_topic',
+        type=str,
+        required=True,
+        help="The topic to filter messages (e.g., '/swift/navsat_fix')."
+    )
+    args, unknown = parser.parse_known_args()
+    return args
+
 def main() -> None:
     logger = setup_logger()
+    args = parse_arguments()
 
-    # Determine the absolute path to the package directory
-    package_dir = os.path.dirname(os.path.abspath(__file__))
-    # Assume the "db" folder is located at the package root
-    db_dir = os.path.join(package_dir, '..', 'db')
-    # Construct the path to the rosbag2 folder inside the "db" directory
-    bag_folder = os.path.join(db_dir, "rosbag2_2025_04_04-22_08_55")
-
-    if not os.path.exists(bag_folder):
-        logger.error("Bag folder does not exist: %s", bag_folder)
+    if not os.path.exists(args.bag_folder):
+        logger.error("Bag folder does not exist: %s", args.bag_folder)
         sys.exit(1)
 
-    # Define the target topic as provided
-    target_topic = "/swift/navsat_fix"
-    logger.debug("Resolved bag folder: %s", bag_folder)
-
-    read_rosbag(bag_folder, target_topic, logger)
+    logger.debug("Using bag folder: %s", args.bag_folder)
+    read_rosbag(args.bag_folder, args.target_topic, logger)
 
 if __name__ == "__main__":
     main()

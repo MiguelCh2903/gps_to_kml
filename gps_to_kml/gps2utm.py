@@ -2,6 +2,7 @@
 import os
 import sys
 import csv
+import argparse
 import logging
 
 import rosbag2_py
@@ -11,6 +12,9 @@ import utm
 from sensor_msgs.msg import NavSatFix
 
 def setup_logger() -> logging.Logger:
+    """
+    Configures and returns a logger for the application.
+    """
     logger = logging.getLogger("utm_converter")
     logger.setLevel(logging.DEBUG)
 
@@ -26,10 +30,21 @@ def setup_logger() -> logging.Logger:
     return logger
 
 def convert_and_save_to_utm(bag_folder: str, target_topic: str, output_file: str, logger: logging.Logger) -> None:
+    """
+    Reads NavSatFix messages from a rosbag, converts the GPS coordinates to UTM, 
+    and writes the data to a CSV file.
+    
+    :param bag_folder: Absolute path to the rosbag2 directory.
+    :param target_topic: The topic to filter messages.
+    :param output_file: File path for the output CSV file.
+    :param logger: Logger instance for logging.
+    """
     try:
         storage_options = rosbag2_py.StorageOptions(uri=bag_folder, storage_id="sqlite3")
-        converter_options = rosbag2_py.ConverterOptions(input_serialization_format="cdr", output_serialization_format="cdr")
-
+        converter_options = rosbag2_py.ConverterOptions(
+            input_serialization_format="cdr",
+            output_serialization_format="cdr"
+        )
         reader = rosbag2_py.SequentialReader()
         reader.open(storage_options, converter_options)
     except Exception as e:
@@ -40,7 +55,10 @@ def convert_and_save_to_utm(bag_folder: str, target_topic: str, output_file: str
 
     try:
         with open(output_file, mode="w", newline="") as csvfile:
-            fieldnames = ["timestamp", "latitude", "longitude", "altitude", "easting", "northing", "zone_number", "zone_letter"]
+            fieldnames = [
+                "timestamp", "latitude", "longitude", "altitude",
+                "easting", "northing", "zone_number", "zone_letter"
+            ]
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
 
@@ -50,9 +68,7 @@ def convert_and_save_to_utm(bag_folder: str, target_topic: str, output_file: str
                 if topic == target_topic:
                     try:
                         msg = rclpy.serialization.deserialize_message(data, NavSatFix)
-
                         utm_coords = utm.from_latlon(msg.latitude, msg.longitude)
-
                         writer.writerow({
                             "timestamp": timestamp,
                             "latitude": msg.latitude,
@@ -63,7 +79,6 @@ def convert_and_save_to_utm(bag_folder: str, target_topic: str, output_file: str
                             "zone_number": utm_coords[2],
                             "zone_letter": utm_coords[3]
                         })
-
                     except Exception as e:
                         logger.error("Deserialization or conversion error: %s", e)
     except Exception as e:
@@ -71,22 +86,43 @@ def convert_and_save_to_utm(bag_folder: str, target_topic: str, output_file: str
 
     logger.info("UTM data saved to: %s", output_file)
 
+def parse_arguments() -> argparse.Namespace:
+    """
+    Parses command-line arguments, ignoring extra ROS 2 launch arguments.
+    """
+    parser = argparse.ArgumentParser(
+        description="Convert NavSatFix messages from a rosbag2 file to CSV with UTM coordinates."
+    )
+    parser.add_argument(
+        '--bag_folder',
+        type=str,
+        required=True,
+        help="Absolute path to the rosbag2 directory."
+    )
+    parser.add_argument(
+        '--target_topic',
+        type=str,
+        required=True,
+        help="The topic to filter messages (e.g., '/swift/navsat_fix')."
+    )
+    parser.add_argument(
+        '--output_file',
+        type=str,
+        required=True,
+        help="File path for the output CSV file."
+    )
+    args, unknown = parser.parse_known_args()
+    return args
+
 def main():
     logger = setup_logger()
+    args = parse_arguments()
 
-    # Resolve path to bag and output file
-    package_dir = os.path.dirname(os.path.abspath(__file__))
-    db_dir = os.path.join(package_dir, '..', 'db')
-    bag_folder = os.path.join(db_dir, "rosbag2_2025_04_04-22_08_55")
-    output_file = os.path.join(db_dir, "utm_data.csv")
-
-    if not os.path.exists(bag_folder):
-        logger.error("Bag folder does not exist: %s", bag_folder)
+    if not os.path.exists(args.bag_folder):
+        logger.error("Bag folder does not exist: %s", args.bag_folder)
         sys.exit(1)
 
-    target_topic = "/swift/navsat_fix"
-
-    convert_and_save_to_utm(bag_folder, target_topic, output_file, logger)
+    convert_and_save_to_utm(args.bag_folder, args.target_topic, args.output_file, logger)
 
 if __name__ == "__main__":
     main()

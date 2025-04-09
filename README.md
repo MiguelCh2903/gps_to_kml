@@ -33,9 +33,61 @@ El paquete está diseñado siguiendo buenas prácticas de programación, con man
 1. **Clonar el Repositorio:**
 
    ```bash
-   cd ~/ros2_ws/src
+   cd ~/multipacha_ws/src
    git clone <url-del-repositorio> tu_package
    ```
 
 2. **Instalar Dependencias:**
-3. 
+
+   ```bash
+   sudo apt install ros-${ROS_DISTRO}-rosbag2-storage-mcap ros-${ROS_DISTRO}-rosbag2
+   pip install pykml utm
+   ```
+
+3. **Compilar el Paquete:**
+
+   ```bash
+   cd ~/multipacha_ws
+   colcon build --packages-select gps_to_kml
+   source install/setup.bash
+   ```
+
+## Uso
+
+### Lectura del Rosbag
+
+```bash
+ros2 run gps_to_kml read_rosbag <path_to_rosbag> --topic <gps_topic>
+```
+
+### Conversión a UTM (CSV)
+
+```bash
+ros2 run gps_to_kml gps_to_utm <path_to_rosbag> --topic <gps_topic> --output <output.csv>
+```
+
+### Conversión a KML
+
+```bash
+ros2 run gps_to_kml gps_to_kml <path_to_rosbag> --topic <gps_topic> --output <output.kml>
+```
+
+## Visualización Ejemplo de KML
+
+1. Abre Google Earth
+2. Selecciona "Abrir" y elige el archivo KML generado
+3. Podrás visualizar la trayectoria GPS
+
+## Dependencias
+
+- ROS2 Jazzy (o versión compatible)
+- Python 3.11+
+- Paquetes ROS2:
+  - rosbag2
+- Paquetes Python:
+  - pykml
+  - utm
+
+## Licencia
+
+Este proyecto está licenciado bajo la Licencia MIT.
